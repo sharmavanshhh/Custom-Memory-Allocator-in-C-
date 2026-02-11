@@ -1,20 +1,22 @@
 # Custom Memory Allocator in C++
 
-A from-scratch implementation of a **custom heap memory allocator** that mimics the internal behavior of `malloc` and `free`.
+A from-scratch implementation of a **custom heap memory allocator** in C++ that mimics the internal behavior of `malloc` and `free`.
 
-This project demonstrates how dynamic memory management works internally in operating systems and C/C++ runtime libraries.
+This project demonstrates how dynamic memory management works internally in operating systems and C/C++ runtime libraries, including fragmentation handling, allocation strategies, and safety checks.
 
 ---
 
 ## 🚀 Features
 
-- Private 1 MB heap managed manually
-- Block metadata using headers
+- Private **1 MB heap** managed manually
+- Block metadata stored using headers
 - Separate **heap list** and **free list**
-- Block **splitting** during allocation
-- Block **coalescing** during deallocation
-- Memory **alignment (8 bytes)**
-- Support for **First Fit** and **Best Fit** allocation strategies
+- **Block splitting** during allocation
+- **Block coalescing** during deallocation
+- **8-byte memory alignment**
+- Support for:
+  - **First Fit**
+  - **Best Fit** allocation strategies
 - Fragmentation visualization
 - Safety checks:
   - Double free detection
@@ -23,79 +25,216 @@ This project demonstrates how dynamic memory management works internally in oper
 
 ---
 
-## 🧠 How Memory is Managed
+## 🧠 How Memory Is Managed
 
-Every block in the heap looks like this:
+Every allocation inside the custom heap is structured as:
 
 ```
-| BlockHeader | -------- Payload (User Memory) -------- |
++------------------------+--------------------------------------+
+|      BlockHeader       |        Payload (User Memory)         |
++------------------------+--------------------------------------+
 ```
 
-### 📌 Insert Hand Drawn Diagram Here (Block Structure)
+### BlockHeader contains:
+```
+size | isFree | prev | next | prevFree | nextFree
+```
+
+- The **user only receives the payload pointer**
+- The header is stored **just before** user memory
+- Metadata is invisible to the user but critical for management
 
 ---
 
 ## 🗂 Heap Structure
 
-The allocator maintains two linked lists:
+The allocator maintains **two linked lists**:
 
-1. **Heap List** → connects all blocks in physical memory order
-2. **Free List** → connects only free blocks for faster allocation search
+### 1️⃣ Heap List (Physical Memory Order)
 
-### 📌 Insert Hand Drawn Diagram Here (Heap List vs Free List)
+```
+[Block A] <--> [Block B] <--> [Block C] <--> [Block D]
+```
+
+- Contains **all blocks**
+- Used for traversal and **coalescing adjacent blocks**
+
+### 2️⃣ Free List (Only Free Blocks)
+
+```
+[Block B] <--> [Block D]
+```
+
+- Contains **only free blocks**
+- Used to speed up allocation search
 
 ---
 
 ## ⚙️ Allocation Process (`myMalloc`)
 
-1. Align requested size to 8 bytes
-2. Search free list using chosen strategy:
-   - First Fit
-   - Best Fit
-3. Remove block from free list
-4. Split block if larger than needed
-5. Return pointer to payload
+Steps followed during allocation:
 
-### 📌 Insert Hand Drawn Diagram Here (Block Splitting)
+1. Align requested size to **8 bytes**
+2. Search the free list using selected strategy:
+   - First Fit → first sufficient block
+   - Best Fit → smallest sufficient block
+3. Remove chosen block from free list
+4. **Split block** if it is larger than required
+5. Return pointer to payload
 
 ---
 
-## ♻️ Deallocation Process (`myFree`)
+## ✂️ Block Splitting (Exact Behavior)
 
-1. Validate pointer (invalid / double free detection)
-2. Mark block as free
-3. Add block to free list
-4. Coalesce with neighboring free blocks
+Initial free block:
 
-### 📌 Insert Hand Drawn Diagram Here (Coalescing)
+```
++--------------------------------------------------+
+|               Free Block (1048552 bytes)         |
++--------------------------------------------------+
+```
+
+Request: `myMalloc(40)`
+
+After splitting:
+
+```
++-----------+--------------------------------------+
+| Used 40   |        Free 1048464                  |
++-----------+--------------------------------------+
+```
+
+The remaining portion becomes a **new free block** with its own header.
 
 ---
 
 ## 📊 Fragmentation Example
 
-When a middle block is freed, fragmentation occurs:
+After allocations and freeing a middle block:
 
 ```
-| Used | Free | Used | Free |
+|U40|F80|U24|F1048336|
 ```
 
-First Fit and Best Fit behave differently here.
+Visual layout:
+
+```
++---------+---------+---------+------------------+
+| Used 40 | Free 80 | Used 24 |   Free (large)   |
++---------+---------+---------+------------------+
+```
+
+Memory is available but fragmented.
+
+---
+
+## 🧲 First Fit vs Best Fit
+
+Free blocks available:
+
+```
+[ Free 100 ]   [ Free 60 ]   [ Free 200 ]
+```
+
+Request: `myMalloc(50)`
+
+### First Fit
+```
+Chooses: Free 100 (first sufficient block)
+```
+
+### Best Fit
+```
+Chooses: Free 60 (tightest fit)
+```
+
+This difference is demonstrated clearly in the demo programs.
+
+---
+
+## ♻️ Deallocation Process (`myFree`)
+
+Steps followed during deallocation:
+
+1. Validate pointer:
+   - Must belong to allocator heap
+   - Must not already be free
+2. Mark block as free
+3. Insert block into free list
+4. **Coalesce** with neighboring free blocks if possible
+
+---
+
+## 🔄 Coalescing Example
+
+Before:
+
+```
++---------+---------+
+| Free 40 | Free 24 |
++---------+---------+
+```
+
+After coalescing:
+
+```
++-------------------+
+|     Free 64       |
++-------------------+
+```
+
+This reduces external fragmentation.
+
+---
+
+## 🚫 Safety Checks
+
+### Double Free Detection
+
+```
+Attempting to free an already free block → ERROR
+```
+
+### Invalid Free Detection
+
+```
+Pointer not belonging to allocator heap → ERROR
+```
+
+These checks prevent heap corruption.
+
+---
+
+## 🗺 Memory Map Visualization
+
+From demo output:
+
+```
+|U40|F80|U24|F1048336|
+```
+
+Legend:
+- `U` → Used block
+- `F` → Free block
+
+This gives a compact view of heap state.
 
 ---
 
 ## 🧪 Demo Programs
 
-Two demos are provided:
+Two detailed demos are provided:
 
 - `demo_first_fit.cpp`
 - `demo_best_fit.cpp`
 
-These demonstrate:
+Each demo showcases:
 - Allocation
 - Fragmentation
 - Strategy behavior
 - Coalescing
-- Safety checks
+- Double free detection
+- Invalid free detection
 
 ---
 
@@ -104,36 +243,39 @@ These demonstrate:
 ### First Fit Demo
 
 ```bash
-g++ src/MemoryAllocator.cpp demo/first_fit.cpp -Iinclude -o first
+g++ src/MemoryAllocator.cpp demo/demo_first_fit.cpp -Iinclude -o first
 ./first
 ```
-or run the file : first_fit.bat
+
+or on Windows:
+
+```
+run_first_fit.bat
+```
 
 ### Best Fit Demo
 
 ```bash
-g++ src/MemoryAllocator.cpp demo/best_fit.cpp -Iinclude -o best
+g++ src/MemoryAllocator.cpp demo/demo_best_fit.cpp -Iinclude -o best
 ./best
 ```
 
-or run the file : best_fit.bat
+or on Windows:
 
----
-
-## 🖥 Example Output
-
-(Insert terminal screenshots here for LinkedIn / README)
+```
+run_best_fit.bat
+```
 
 ---
 
 ## 📚 What This Project Demonstrates
 
-This project showcases understanding of:
+This project demonstrates strong understanding of:
 
-- Low level memory management
-- Heap design
+- Low-level memory management
+- Heap design and layout
 - Fragmentation handling
-- Linked list management in memory
+- Linked list manipulation in raw memory
 - Allocation strategies
 - Systems programming concepts
 
@@ -141,4 +283,4 @@ This project showcases understanding of:
 
 ## 👨‍💻 Author
 
-Vansh Sharma
+**Vansh Sharma**
